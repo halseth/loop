@@ -45,9 +45,18 @@ type testContext struct {
 }
 
 func newSwapClient(config *clientConfig) *Client {
-	sweeper := &sweep.Sweeper{
-		Lnd: config.LndServices,
-	}
+
+	sweeper := sweep.New(
+		&sweep.Config{
+			TxConfTarget: 6,
+		}, config.LndServices,
+	)
+
+	runCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		sweeper.Run(runCtx)
+	}()
 
 	lndServices := config.LndServices
 
@@ -123,6 +132,10 @@ func createClientTestContext(t *testing.T,
 		)
 		logger.Errorf("client run: %v", err)
 		ctx.runErr <- err
+	}()
+
+	go func() {
+		swapClient.sweeper.Run(runCtx)
 	}()
 
 	return ctx

@@ -399,12 +399,13 @@ func (s *loopInSwap) publishOnChainHtlc(ctx context.Context) (bool, error) {
 	}
 
 	s.log.Infof("Publishing on chain HTLC with fee rate %v", feeRate)
-	tx, err := s.lnd.WalletKit.SendOutputs(ctx,
-		[]*wire.TxOut{{
+	tx, err := s.sweeper.SendOutputBatched(
+		ctx,
+		&wire.TxOut{
 			PkScript: s.htlc.PkScript,
 			Value:    int64(s.LoopInContract.AmountRequested),
-		}},
-		feeRate,
+		},
+		time.Now().Add(1*time.Second),
 	)
 	if err != nil {
 		return false, fmt.Errorf("send outputs: %v", err)

@@ -45,7 +45,17 @@ func TestLateHtlcPublish(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sweeper := &sweep.Sweeper{Lnd: &lnd.LndServices}
+	sweeper := sweep.New(
+		&sweep.Config{
+			TxConfTarget: 6,
+		}, &lnd.LndServices,
+	)
+
+	runCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		sweeper.Run(runCtx)
+	}()
 
 	blockEpochChan := make(chan interface{})
 	statusChan := make(chan SwapInfo)

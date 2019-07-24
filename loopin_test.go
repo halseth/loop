@@ -30,6 +30,13 @@ func TestLoopInSuccess(t *testing.T) {
 
 	ctx := newLoopInTestContext(t)
 
+	runCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		ctx.sweeper.Run(runCtx)
+	}()
+
 	height := int32(600)
 
 	cfg := &swapConfig{
@@ -119,6 +126,13 @@ func TestLoopInTimeout(t *testing.T) {
 	defer test.Guard(t)()
 
 	ctx := newLoopInTestContext(t)
+
+	runCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		ctx.sweeper.Run(runCtx)
+	}()
 
 	height := int32(600)
 
@@ -221,6 +235,13 @@ func testLoopInResume(t *testing.T, state loopdb.SwapState, expired bool) {
 	defer test.Guard(t)()
 
 	ctx := newLoopInTestContext(t)
+
+	runCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		ctx.sweeper.Run(runCtx)
+	}()
 
 	cfg := &swapConfig{
 		lnd:    &ctx.lnd.LndServices,

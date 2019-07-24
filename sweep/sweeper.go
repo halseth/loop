@@ -3,6 +3,7 @@ package sweep
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/txscript"
@@ -12,11 +13,144 @@ import (
 	"github.com/lightninglabs/loop/swap"
 	"github.com/lightningnetwork/lnd/input"
 	"github.com/lightningnetwork/lnd/keychain"
+	"github.com/lightningnetwork/lnd/ticker"
 )
+
+type Config struct {
+	TxConfTarget int32
+}
 
 // Sweeper creates htlc sweep txes.
 type Sweeper struct {
-	Lnd *lndclient.LndServices
+	cfg            *Config
+	lnd            *lndclient.LndServices
+	sendOutputChan chan *sendOutputRequest
+}
+
+type sendOutputRequest struct {
+	ctx      context.Context
+	txOut    *wire.TxOut
+	cutoff   time.Time
+	respChan chan *wire.MsgTx
+	errChan  chan error
+}
+
+func New(cfg *Config, lnd *lndclient.LndServices) *Sweeper {
+	return &Sweeper{
+		cfg:            cfg,
+		lnd:            lnd,
+		sendOutputChan: make(chan *sendOutputRequest),
+	}
+}
+
+func (s *Sweeper) Run(ctx context.Context) {
+
+	var sendRequests []*sendOutputRequest
+	txPublishTicker := ticker.New(1 * time.Second)
+
+	for {
+
+		select {
+		case req := <-s.sendOutputChan:
+			sendRequests = append(sendRequests, req)
+			txPublishTicker.Resume()
+
+		case <-txPublishTicker.Ticks():
+			fmt.Println("tick")
+			// Check if any have had the time cutoff.
+			now := time.Now()
+			publish := false
+			for _, req := range sendRequests {
+				if req.cutoff.Before(now) {
+					publish = true
+				}
+			}
+
+			if !publish {
+				fmt.Println("not publish")
+				continue
+			}
+			fmt.Println("publish!")
+
+			// Publish what we got so far.
+			txOuts := make([]*wire.TxOut, 0, len(sendRequests))
+			for _, req := range sendRequests {
+				txOuts = append(txOuts, req.txOut)
+			}
+
+			tx, err := s.publishTxOuts(txOuts)
+			for _, req := range sendRequests {
+				if err != nil {
+					req.errChan <- err
+					continue
+				}
+
+				req.respChan <- tx
+			}
+
+			sendRequests = nil
+			txPublishTicker.Pause()
+
+		case <-ctx.Done():
+			return
+		}
+
+	}
+
+}
+
+func (s *Sweeper) SendOutputBatched(ctx context.Context, txOut *wire.TxOut,
+	timeCutoff time.Time) (*wire.MsgTx, error) {
+
+	respChan := make(chan *wire.MsgTx)
+	errChan := make(chan error)
+
+	select {
+	case s.sendOutputChan <- &sendOutputRequest{
+		ctx:      ctx,
+		txOut:    txOut,
+		cutoff:   timeCutoff,
+		respChan: respChan,
+		errChan:  errChan,
+	}:
+	case <-ctx.Done():
+		return nil, fmt.Errorf("Context timeout before outputs added")
+	}
+
+	select {
+	case tx := <-respChan:
+		return tx, nil
+
+	case err := <-errChan:
+		return nil, err
+
+		// TODO: how long is this context timeout?
+		// Not safe to wait for context?
+		//	case <-ctx.Done():
+		//		return nil, fmt.Errorf("Context timeout before outputs added")
+	}
+}
+
+func (s *Sweeper) publishTxOuts(txOut []*wire.TxOut) (*wire.MsgTx, error) {
+
+	// TODO: choose context
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Get fee estimate from lnd.
+	feeRate, err := s.lnd.WalletKit.EstimateFee(ctx, s.cfg.TxConfTarget)
+	if err != nil {
+		return nil, fmt.Errorf("estimate fee: %v", err)
+	}
+
+	tx, err := s.lnd.WalletKit.SendOutputs(
+		ctx, txOut, feeRate,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("send outputs: %v", err)
+	}
+
+	return tx, nil
 }
 
 // CreateSweepTx creates an htlc sweep tx.
@@ -69,7 +203,7 @@ func (s *Sweeper) CreateSweepTx(
 		},
 	}
 
-	rawSigs, err := s.Lnd.Signer.SignOutputRaw(
+	rawSigs, err := s.lnd.Signer.SignOutputRaw(
 		globalCtx, sweepTx, []*input.SignDescriptor{&signDesc},
 	)
 	if err != nil {
@@ -95,7 +229,7 @@ func (s *Sweeper) GetSweepFee(ctx context.Context,
 	btcutil.Amount, error) {
 
 	// Get fee estimate from lnd.
-	feeRate, err := s.Lnd.WalletKit.EstimateFee(ctx, sweepConfTarget)
+	feeRate, err := s.lnd.WalletKit.EstimateFee(ctx, sweepConfTarget)
 	if err != nil {
 		return 0, fmt.Errorf("estimate fee: %v", err)
 	}

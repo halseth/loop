@@ -92,9 +92,12 @@ func NewClient(dbDir string, serverAddress string, insecure bool,
 		},
 	}
 
-	sweeper := &sweep.Sweeper{
-		Lnd: lnd,
-	}
+	sweeper := sweep.New(
+		&sweep.Config{
+			// TODO: make configurable
+			TxConfTarget: 6,
+		}, lnd,
+	)
 
 	executor := newExecutor(&executorConfig{
 		lnd:               lnd,
@@ -211,6 +214,12 @@ func (s *Client) Run(ctx context.Context,
 	if err != nil {
 		return err
 	}
+
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		s.sweeper.Run(mainCtx)
+	}()
 
 	// Start goroutine to deliver all pending swaps to the main loop.
 	s.wg.Add(1)
