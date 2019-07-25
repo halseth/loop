@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
@@ -13,11 +14,13 @@ import (
 	"github.com/lightninglabs/loop/swap"
 	"github.com/lightningnetwork/lnd/input"
 	"github.com/lightningnetwork/lnd/keychain"
+	"github.com/lightningnetwork/lnd/sweep"
 	"github.com/lightningnetwork/lnd/ticker"
 )
 
 type Config struct {
 	TxConfTarget int32
+	SweeperStore sweep.SweeperStore
 }
 
 // Sweeper creates htlc sweep txes.
@@ -25,6 +28,7 @@ type Sweeper struct {
 	cfg            *Config
 	lnd            *lndclient.LndServices
 	sendOutputChan chan *sendOutputRequest
+	sweeper        *sweep.UtxoSweeper
 }
 
 type sendOutputRequest struct {
@@ -40,13 +44,45 @@ func New(cfg *Config, lnd *lndclient.LndServices) *Sweeper {
 		cfg:            cfg,
 		lnd:            lnd,
 		sendOutputChan: make(chan *sendOutputRequest),
+		sweeper: sweep.New(&sweep.UtxoSweeperConfig{
+			FeeEstimator: &feeEstimator{lnd},
+			GenSweepScript: func() ([]byte, error) {
+				return newSweepScript(lnd)
+			},
+			Signer: &signer{lnd},
+			PublishTransaction: func(tx *wire.MsgTx) error {
+				// TODO:context
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+
+				return lnd.WalletKit.PublishTransaction(ctx, tx)
+			},
+			NewBatchTimer: func() <-chan time.Time {
+				return time.NewTimer(sweep.DefaultBatchWindowDuration).C
+			},
+			Notifier: &notifier{lnd},
+			GetBestBlock: func() (*chainhash.Hash, int32, error) {
+				return nil, 0, fmt.Errorf("not impl")
+			},
+			Store:                cfg.SweeperStore,
+			MaxInputsPerTx:       sweep.DefaultMaxInputsPerTx,
+			MaxSweepAttempts:     sweep.DefaultMaxSweepAttempts,
+			NextAttemptDeltaFunc: sweep.DefaultNextAttemptDeltaFunc,
+			MaxFeeRate:           sweep.DefaultMaxFeeRate,
+			FeeRateBucketSize:    sweep.DefaultFeeRateBucketSize,
+		}),
 	}
 }
 
 func (s *Sweeper) Run(ctx context.Context) {
 
+	s.sweeper.Start()
+	defer s.sweeper.Stop()
+
 	var sendRequests []*sendOutputRequest
+
 	txPublishTicker := ticker.New(1 * time.Second)
+	defer txPublishTicker.Stop()
 
 	for {
 

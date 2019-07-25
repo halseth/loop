@@ -10,6 +10,7 @@ import (
 	"github.com/lightninglabs/loop/loopdb"
 	"github.com/lightninglabs/loop/sweep"
 	"github.com/lightninglabs/loop/test"
+	sweeper "github.com/lightningnetwork/lnd/sweep"
 )
 
 // TestLateHtlcPublish tests that the client is not revealing the preimage if
@@ -48,6 +49,7 @@ func TestLateHtlcPublish(t *testing.T) {
 	sweeper := sweep.New(
 		&sweep.Config{
 			TxConfTarget: 6,
+			SweeperStore: sweeper.NewMockSweeperStore(),
 		}, &lnd.LndServices,
 	)
 
