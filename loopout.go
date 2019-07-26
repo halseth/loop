@@ -9,6 +9,7 @@ import (
 
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
+	"github.com/lightninglabs/loop/batcher"
 	"github.com/lightninglabs/loop/lndclient"
 	"github.com/lightninglabs/loop/loopdb"
 	"github.com/lightninglabs/loop/swap"
@@ -48,6 +49,7 @@ type loopOutSwap struct {
 // executeConfig contains extra configuration to execute the swap.
 type executeConfig struct {
 	sweeper        *sweep.Sweeper
+	batcher        *batcher.Batcher
 	statusChan     chan<- SwapInfo
 	blockEpochChan <-chan interface{}
 	timerFactory   func(d time.Duration) <-chan time.Time

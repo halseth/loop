@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lightninglabs/loop/batcher"
 	"github.com/lightninglabs/loop/lndclient"
 	"github.com/lightninglabs/loop/loopdb"
 	"github.com/lightninglabs/loop/sweep"
@@ -46,6 +47,18 @@ func TestLateHtlcPublish(t *testing.T) {
 	}
 
 	sweeper := &sweep.Sweeper{Lnd: &lnd.LndServices}
+
+	batcher := batcher.New(
+		&batcher.Config{
+			TxConfTarget: 6,
+		}, &lnd.LndServices,
+	)
+
+	runCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		batcher.Run(runCtx)
+	}()
 
 	blockEpochChan := make(chan interface{})
 	statusChan := make(chan SwapInfo)

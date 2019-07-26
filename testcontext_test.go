@@ -7,6 +7,7 @@ import (
 
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
+	"github.com/lightninglabs/loop/batcher"
 	"github.com/lightninglabs/loop/loopdb"
 	"github.com/lightninglabs/loop/sweep"
 	"github.com/lightninglabs/loop/test"
@@ -49,12 +50,25 @@ func newSwapClient(config *clientConfig) *Client {
 		Lnd: config.LndServices,
 	}
 
+	batcher := batcher.New(
+		&batcher.Config{
+			TxConfTarget: 6,
+		}, config.LndServices,
+	)
+
+	runCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		batcher.Run(runCtx)
+	}()
+
 	lndServices := config.LndServices
 
 	executor := newExecutor(&executorConfig{
 		lnd:               lndServices,
 		store:             config.Store,
 		sweeper:           sweeper,
+		batcher:           batcher,
 		createExpiryTimer: config.CreateExpiryTimer,
 	})
 
@@ -63,6 +77,7 @@ func newSwapClient(config *clientConfig) *Client {
 		clientConfig: *config,
 		lndServices:  lndServices,
 		sweeper:      sweeper,
+		batcher:      batcher,
 		executor:     executor,
 		resumeReady:  make(chan struct{}),
 	}
@@ -123,6 +138,10 @@ func createClientTestContext(t *testing.T,
 		)
 		logger.Errorf("client run: %v", err)
 		ctx.runErr <- err
+	}()
+
+	go func() {
+		swapClient.batcher.Run(runCtx)
 	}()
 
 	return ctx

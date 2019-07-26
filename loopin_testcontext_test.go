@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lightninglabs/loop/batcher"
 	"github.com/lightninglabs/loop/loopdb"
 	"github.com/lightninglabs/loop/sweep"
 	"github.com/lightninglabs/loop/test"
@@ -15,6 +16,7 @@ type loopInTestContext struct {
 	server         *serverMock
 	store          *storeMock
 	sweeper        *sweep.Sweeper
+	batcher        *batcher.Batcher
 	cfg            *executeConfig
 	statusChan     chan SwapInfo
 	blockEpochChan chan interface{}
@@ -25,6 +27,11 @@ func newLoopInTestContext(t *testing.T) *loopInTestContext {
 	server := newServerMock()
 	store := newStoreMock(t)
 	sweeper := sweep.Sweeper{Lnd: &lnd.LndServices}
+	batcher := batcher.New(
+		&batcher.Config{
+			TxConfTarget: 6,
+		}, &lnd.LndServices,
+	)
 
 	blockEpochChan := make(chan interface{})
 	statusChan := make(chan SwapInfo)
@@ -37,6 +44,7 @@ func newLoopInTestContext(t *testing.T) *loopInTestContext {
 	cfg := executeConfig{
 		statusChan:     statusChan,
 		sweeper:        &sweeper,
+		batcher:        batcher,
 		blockEpochChan: blockEpochChan,
 		timerFactory:   timerFactory,
 	}
@@ -47,6 +55,7 @@ func newLoopInTestContext(t *testing.T) *loopInTestContext {
 		server:         server,
 		store:          store,
 		sweeper:        &sweeper,
+		batcher:        batcher,
 		cfg:            &cfg,
 		statusChan:     statusChan,
 		blockEpochChan: blockEpochChan,

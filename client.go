@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcutil"
+	"github.com/lightninglabs/loop/batcher"
 	"github.com/lightninglabs/loop/lndclient"
 	"github.com/lightninglabs/loop/loopdb"
 	"github.com/lightninglabs/loop/swap"
@@ -61,6 +62,7 @@ type Client struct {
 
 	lndServices *lndclient.LndServices
 	sweeper     *sweep.Sweeper
+	batcher     *batcher.Batcher
 	executor    *executor
 
 	resumeReady chan struct{}
@@ -96,10 +98,18 @@ func NewClient(dbDir string, serverAddress string, insecure bool,
 		Lnd: lnd,
 	}
 
+	batcher := batcher.New(
+		&batcher.Config{
+			// TODO: make configurable
+			TxConfTarget: 6,
+		}, lnd,
+	)
+
 	executor := newExecutor(&executorConfig{
 		lnd:               lnd,
 		store:             store,
 		sweeper:           sweeper,
+		batcher:           batcher,
 		createExpiryTimer: config.CreateExpiryTimer,
 	})
 
@@ -108,6 +118,7 @@ func NewClient(dbDir string, serverAddress string, insecure bool,
 		clientConfig: *config,
 		lndServices:  lnd,
 		sweeper:      sweeper,
+		batcher:      batcher,
 		executor:     executor,
 		resumeReady:  make(chan struct{}),
 	}
@@ -211,6 +222,12 @@ func (s *Client) Run(ctx context.Context,
 	if err != nil {
 		return err
 	}
+
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		s.batcher.Run(mainCtx)
+	}()
 
 	// Start goroutine to deliver all pending swaps to the main loop.
 	s.wg.Add(1)

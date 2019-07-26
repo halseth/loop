@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/lightninglabs/loop/batcher"
 	"github.com/lightninglabs/loop/lndclient"
 	"github.com/lightninglabs/loop/loopdb"
 	"github.com/lightninglabs/loop/sweep"
@@ -18,6 +19,7 @@ type executorConfig struct {
 	lnd *lndclient.LndServices
 
 	sweeper *sweep.Sweeper
+	batcher *batcher.Batcher
 
 	store loopdb.SwapStore
 
@@ -111,6 +113,7 @@ func (s *executor) run(mainCtx context.Context,
 				newSwap.execute(mainCtx, &executeConfig{
 					statusChan:     statusChan,
 					sweeper:        s.sweeper,
+					batcher:        s.batcher,
 					blockEpochChan: queue.ChanOut(),
 					timerFactory:   s.executorConfig.createExpiryTimer,
 				}, height)

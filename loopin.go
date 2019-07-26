@@ -383,14 +383,6 @@ func (s *loopInSwap) publishOnChainHtlc(ctx context.Context) (bool, error) {
 		return false, s.persistState(ctx)
 	}
 
-	// Get fee estimate from lnd.
-	feeRate, err := s.lnd.WalletKit.EstimateFee(
-		ctx, s.LoopInContract.HtlcConfTarget,
-	)
-	if err != nil {
-		return false, fmt.Errorf("estimate fee: %v", err)
-	}
-
 	// Transition to state HtlcPublished before calling SendOutputs to
 	// prevent us from ever paying multiple times after a crash.
 	s.setState(loopdb.StateHtlcPublished)
@@ -399,13 +391,16 @@ func (s *loopInSwap) publishOnChainHtlc(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	s.log.Infof("Publishing on chain HTLC with fee rate %v", feeRate)
-	tx, err := s.lnd.WalletKit.SendOutputs(ctx,
-		[]*wire.TxOut{{
+	cutoff := time.Now().Add(
+		time.Duration(s.LoopInContract.HtlcCutoffTimeSeconds) * time.Second,
+	)
+	s.log.Infof("Sending on chain HTLC to batcher with cutoff time %v",
+		cutoff)
+	tx, err := s.batcher.SendOutputBatched(
+		ctx, &wire.TxOut{
 			PkScript: s.htlc.PkScript,
 			Value:    int64(s.LoopInContract.AmountRequested),
-		}},
-		feeRate,
+		}, cutoff,
 	)
 	if err != nil {
 		return false, fmt.Errorf("send outputs: %v", err)
