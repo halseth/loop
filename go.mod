@@ -11,6 +11,7 @@ require (
 	github.com/jessevdk/go-flags v1.4.0
 	github.com/lightningnetwork/lnd v0.6.1-beta.0.20190605130338-880279b266e9
 	github.com/lightningnetwork/lnd/queue v1.0.1
+	github.com/lightningnetwork/lnd/ticker v1.0.0
 	github.com/urfave/cli v1.20.0
 	golang.org/x/net v0.0.0-20190313220215-9f648a60d977
 	google.golang.org/genproto v0.0.0-20190307195333-5fe7a883aa19
