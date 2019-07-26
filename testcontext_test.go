@@ -12,6 +12,7 @@ import (
 	"github.com/lightninglabs/loop/test"
 	"github.com/lightningnetwork/lnd/chainntnfs"
 	"github.com/lightningnetwork/lnd/lntypes"
+	sweeper "github.com/lightningnetwork/lnd/sweep"
 )
 
 var (
@@ -49,6 +50,7 @@ func newSwapClient(config *clientConfig) *Client {
 	sweeper := sweep.New(
 		&sweep.Config{
 			TxConfTarget: 6,
+			SweeperStore: sweeper.NewMockSweeperStore(),
 		}, config.LndServices,
 	)
 

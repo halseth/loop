@@ -13,7 +13,9 @@ require (
 	github.com/lightningnetwork/lnd/queue v1.0.1
 	github.com/lightningnetwork/lnd/ticker v1.0.0
 	github.com/urfave/cli v1.20.0
+	go.etcd.io/bbolt v1.3.3
 	golang.org/x/net v0.0.0-20190313220215-9f648a60d977
+	google.golang.org/appengine v1.4.0
 	google.golang.org/genproto v0.0.0-20190307195333-5fe7a883aa19
 	google.golang.org/grpc v1.19.0
 	gopkg.in/macaroon.v2 v2.1.0

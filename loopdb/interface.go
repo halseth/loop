@@ -1,8 +1,11 @@
 package loopdb
 
 import (
+	"context"
 	"time"
 
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/btcsuite/btcd/wire"
 	"github.com/lightningnetwork/lnd/lntypes"
 )
 
@@ -38,3 +41,16 @@ type SwapStore interface {
 }
 
 // TODO(roasbeef): back up method in interface?
+
+type SweeperStore interface {
+	// IsOurTx determines whether a tx is published by us, based on its
+	// hash.
+	IsOurTx(ctx context.Context, hash chainhash.Hash) (bool, error)
+
+	// NotifyPublishTx signals that we are about to publish a tx.
+	NotifyPublishTx(ctx context.Context, tx *wire.MsgTx) error
+
+	// GetLastPublishedTx returns the last tx that we called NotifyPublishTx
+	// for.
+	GetLastPublishedTx(ctx context.Context) (*wire.MsgTx, error)
+}

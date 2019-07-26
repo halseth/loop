@@ -13,7 +13,12 @@ import (
 
 	"github.com/lightningnetwork/lnd/chainntnfs"
 	"github.com/lightningnetwork/lnd/channeldb"
+	"github.com/lightningnetwork/lnd/input"
+	"github.com/lightningnetwork/lnd/keychain"
+	"github.com/lightningnetwork/lnd/sweep"
 
+	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/lightningnetwork/lnd/lnrpc/invoicesrpc"
 
@@ -574,6 +579,7 @@ func (s *loopInSwap) processHtlcSpend(ctx context.Context,
 // The swap failed and we are reclaiming our funds.
 func (s *loopInSwap) publishTimeoutTx(ctx context.Context,
 	htlc *wire.OutPoint) error {
+	s.log.Infof("Publishing timeout tx")
 
 	if s.timeoutAddr == nil {
 		var err error
@@ -583,33 +589,53 @@ func (s *loopInSwap) publishTimeoutTx(ctx context.Context,
 		}
 	}
 
-	// Calculate sweep tx fee
-	fee, err := s.sweeper.GetSweepFee(
-		ctx, s.htlc.AddTimeoutToEstimator, TimeoutTxConfTarget,
-	)
+	key, err := btcec.ParsePubKey(s.SenderKey[:], btcec.S256())
 	if err != nil {
 		return err
 	}
 
-	witnessFunc := func(sig []byte) (wire.TxWitness, error) {
-		return s.htlc.GenTimeoutWitness(sig)
+	amount := s.LoopInContract.AmountRequested
+	signDesc := &input.SignDescriptor{
+		WitnessScript: s.htlc.Script,
+		Output: &wire.TxOut{
+			Value: int64(amount),
+		},
+		HashType:   txscript.SigHashAll,
+		InputIndex: 0,
+		KeyDesc: keychain.KeyDescriptor{
+			PubKey: key,
+		},
 	}
 
-	timeoutTx, err := s.sweeper.CreateSweepTx(
-		ctx, s.height, s.htlc, *htlc, s.SenderKey, witnessFunc,
-		s.LoopInContract.AmountRequested, fee, s.timeoutAddr,
+	inp := input.MakeBaseInput(
+		htlc, input.CommitmentNoDelay, signDesc,
+		1, // TODO
 	)
+
+	// With our input constructed, we'll now offer it to the
+	// sweeper.
+
+	s.log.Infof("sweeping input")
+	feePref := sweep.FeePreference{ConfTarget: uint32(TimeoutTxConfTarget)}
+	resultChan, err := s.sweeper.SweepInput(&inp, feePref)
 	if err != nil {
 		return err
 	}
 
-	timeoutTxHash := timeoutTx.TxHash()
-	s.log.Infof("Publishing timeout tx %v with fee %v to addr %v",
-		timeoutTxHash, fee, s.timeoutAddr)
+	s.log.Infof("waiting for result")
+	// Sweeper is going to join this input with other inputs if
+	// possible and publish the sweep tx. When the sweep tx
+	// confirms, it signals us through the result channel with the
+	// outcome. Wait for this to happen.
+	select {
+	case sweepResult := <-resultChan:
+		if sweepResult.Err != nil {
+			return sweepResult.Err
+		}
 
-	err = s.lnd.WalletKit.PublishTransaction(ctx, timeoutTx)
-	if err != nil {
-		s.log.Warnf("publish timeout: %v", err)
+		s.log.Infof("Sweep success")
+	case <-ctx.Done():
+		return fmt.Errorf("quitting")
 	}
 
 	return nil

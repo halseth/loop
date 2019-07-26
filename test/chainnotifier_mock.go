@@ -1,6 +1,7 @@
 package test
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -34,11 +35,13 @@ func (c *mockChainNotifier) RegisterSpendNtfn(ctx context.Context,
 	outpoint *wire.OutPoint, pkScript []byte, heightHint int32) (
 	chan *chainntnfs.SpendDetail, chan error, error) {
 
+	fmt.Println("register spend chan")
 	c.lnd.RegisterSpendChannel <- &SpendRegistration{
 		HeightHint: heightHint,
 		Outpoint:   outpoint,
 		PkScript:   pkScript,
 	}
+	fmt.Println("sent on register spend chan")
 
 	spendChan := make(chan *chainntnfs.SpendDetail, 1)
 	errChan := make(chan error, 1)

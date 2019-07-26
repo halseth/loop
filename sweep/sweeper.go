@@ -28,7 +28,8 @@ type Sweeper struct {
 	cfg            *Config
 	lnd            *lndclient.LndServices
 	sendOutputChan chan *sendOutputRequest
-	sweeper        *sweep.UtxoSweeper
+
+	*sweep.UtxoSweeper
 }
 
 type sendOutputRequest struct {
@@ -44,7 +45,7 @@ func New(cfg *Config, lnd *lndclient.LndServices) *Sweeper {
 		cfg:            cfg,
 		lnd:            lnd,
 		sendOutputChan: make(chan *sendOutputRequest),
-		sweeper: sweep.New(&sweep.UtxoSweeperConfig{
+		UtxoSweeper: sweep.New(&sweep.UtxoSweeperConfig{
 			FeeEstimator: &feeEstimator{lnd},
 			GenSweepScript: func() ([]byte, error) {
 				return newSweepScript(lnd)
@@ -58,11 +59,12 @@ func New(cfg *Config, lnd *lndclient.LndServices) *Sweeper {
 				return lnd.WalletKit.PublishTransaction(ctx, tx)
 			},
 			NewBatchTimer: func() <-chan time.Time {
-				return time.NewTimer(sweep.DefaultBatchWindowDuration).C
+				//return time.NewTimer(sweep.DefaultBatchWindowDuration).C
+				return time.NewTimer(100 * time.Millisecond).C
 			},
 			Notifier: &notifier{lnd},
 			GetBestBlock: func() (*chainhash.Hash, int32, error) {
-				return nil, 0, fmt.Errorf("not impl")
+				return nil, 0, nil
 			},
 			Store:                cfg.SweeperStore,
 			MaxInputsPerTx:       sweep.DefaultMaxInputsPerTx,
@@ -76,8 +78,12 @@ func New(cfg *Config, lnd *lndclient.LndServices) *Sweeper {
 
 func (s *Sweeper) Run(ctx context.Context) {
 
-	s.sweeper.Start()
-	defer s.sweeper.Stop()
+	fmt.Println("will start sweeper")
+	if err := s.Start(); err != nil {
+		fmt.Println("error:", err)
+		return
+	}
+	defer s.Stop()
 
 	var sendRequests []*sendOutputRequest
 
@@ -190,7 +196,7 @@ func (s *Sweeper) publishTxOuts(txOut []*wire.TxOut) (*wire.MsgTx, error) {
 }
 
 // CreateSweepTx creates an htlc sweep tx.
-func (s *Sweeper) CreateSweepTx(
+func (s *Sweeper) CreateSweepTxOld(
 	globalCtx context.Context, height int32,
 	htlc *swap.Htlc, htlcOutpoint wire.OutPoint,
 	keyBytes [33]byte,

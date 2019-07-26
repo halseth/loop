@@ -625,7 +625,7 @@ func (s *loopOutSwap) sweep(ctx context.Context,
 	}
 
 	// Create sweep tx.
-	sweepTx, err := s.sweeper.CreateSweepTx(
+	sweepTx, err := s.sweeper.CreateSweepTxOld(
 		ctx, s.height, s.htlc, htlcOutpoint, s.ReceiverKey, witnessFunc,
 		htlcValue, fee, s.DestAddr,
 	)

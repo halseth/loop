@@ -7,6 +7,7 @@ import (
 	"github.com/lightninglabs/loop/loopdb"
 	"github.com/lightninglabs/loop/sweep"
 	"github.com/lightninglabs/loop/test"
+	sweeper "github.com/lightningnetwork/lnd/sweep"
 )
 
 type loopInTestContext struct {
@@ -27,6 +28,7 @@ func newLoopInTestContext(t *testing.T) *loopInTestContext {
 	sweeper := sweep.New(
 		&sweep.Config{
 			TxConfTarget: 6,
+			SweeperStore: sweeper.NewMockSweeperStore(),
 		}, &lnd.LndServices,
 	)
 

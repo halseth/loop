@@ -4,8 +4,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/btcsuite/btcd/chaincfg"
@@ -16,7 +14,7 @@ import (
 var (
 	// dbFileName is the default file name of the client-side loop sub-swap
 	// database.
-	dbFileName = "loop.db"
+	DBFileName = "loop.db"
 
 	// loopOutBucketKey is a bucket that contains all out swaps that are
 	// currently pending or completed. This bucket is keyed by the swaphash,
@@ -56,17 +54,6 @@ var (
 	keyLength = 33
 )
 
-// fileExists returns true if the file exists, and false otherwise.
-func fileExists(path string) bool {
-	if _, err := os.Stat(path); err != nil {
-		if os.IsNotExist(err) {
-			return false
-		}
-	}
-
-	return true
-}
-
 // boltSwapStore stores swap data in boltdb.
 type boltSwapStore struct {
 	db          *bbolt.DB
@@ -75,31 +62,15 @@ type boltSwapStore struct {
 
 // A compile-time flag to ensure that boltSwapStore implements the SwapStore
 // interface.
-var _ = (*boltSwapStore)(nil)
+var _ SwapStore = (*boltSwapStore)(nil)
 
 // NewBoltSwapStore creates a new client swap store.
-func NewBoltSwapStore(dbPath string, chainParams *chaincfg.Params) (
+func NewBoltSwapStore(bdb *bbolt.DB, chainParams *chaincfg.Params) (
 	*boltSwapStore, error) {
-
-	// If the target path for the swap store doesn't exist, then we'll
-	// create it now before we proceed.
-	if !fileExists(dbPath) {
-		if err := os.MkdirAll(dbPath, 0700); err != nil {
-			return nil, err
-		}
-	}
-
-	// Now that we know that path exists, we'll open up bolt, which
-	// implements our default swap store.
-	path := filepath.Join(dbPath, dbFileName)
-	bdb, err := bbolt.Open(path, 0600, nil)
-	if err != nil {
-		return nil, err
-	}
 
 	// We'll create all the buckets we need if this is the first time we're
 	// starting up. If they already exist, then these calls will be noops.
-	err = bdb.Update(func(tx *bbolt.Tx) error {
+	err := bdb.Update(func(tx *bbolt.Tx) error {
 		// Check if the meta bucket exists. If it exists, we consider
 		// the database as initialized and assume the meta bucket
 		// contains the db version.
@@ -117,7 +88,7 @@ func NewBoltSwapStore(dbPath string, chainParams *chaincfg.Params) (
 
 		// Try creating these buckets, because loop in was added without
 		// bumping the db version number.
-		_, err = tx.CreateBucketIfNotExists(loopOutBucketKey)
+		_, err := tx.CreateBucketIfNotExists(loopOutBucketKey)
 		if err != nil {
 			return err
 		}

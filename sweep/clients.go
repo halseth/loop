@@ -23,7 +23,17 @@ var _ lnwallet.FeeEstimator = (*feeEstimator)(nil)
 
 func (f *feeEstimator) EstimateFeePerKW(
 	numBlocks uint32) (lnwallet.SatPerKWeight, error) {
-	return 0, fmt.Errorf("exiting")
+
+	// TODO:context
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	feeRate, err := f.lnd.WalletKit.EstimateFee(ctx, int32(numBlocks))
+	if err != nil {
+		return 0, fmt.Errorf("estimate fee: %v", err)
+	}
+
+	return feeRate, nil
 }
 
 func (f *feeEstimator) RelayFeePerKW() lnwallet.SatPerKWeight {
@@ -63,7 +73,44 @@ func (m *notifier) RegisterConfirmationsNtfn(txid *chainhash.Hash, _ []byte, num
 
 func (m *notifier) RegisterBlockEpochNtfn(
 	bestBlock *chainntnfs.BlockEpoch) (*chainntnfs.BlockEpochEvent, error) {
-	return nil, fmt.Errorf("not impl")
+
+	// TODO:context
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+
+	blockEpochChan, blockErrorChan, err :=
+		m.lnd.ChainNotifier.RegisterBlockEpochNtfn(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	epochs := make(chan *chainntnfs.BlockEpoch, 1)
+	quit := make(chan struct{})
+
+	go func() {
+		for {
+			select {
+			case h := <-blockEpochChan:
+				epochs <- &chainntnfs.BlockEpoch{
+					Height: h,
+				}
+
+			case <-blockErrorChan:
+				return
+			case <-quit:
+				return
+			}
+
+		}
+
+	}()
+
+	return &chainntnfs.BlockEpochEvent{
+		Epochs: epochs,
+		Cancel: func() {
+			close(quit)
+			cancel()
+		},
+	}, nil
 }
 
 func (m *notifier) Start() error {
@@ -73,9 +120,23 @@ func (m *notifier) Start() error {
 func (m *notifier) Stop() error {
 	return nil
 }
-func (m *notifier) RegisterSpendNtfn(outpoint *wire.OutPoint, _ []byte,
+func (m *notifier) RegisterSpendNtfn(outpoint *wire.OutPoint, pkScript []byte,
 	heightHint uint32) (*chainntnfs.SpendEvent, error) {
-	return nil, fmt.Errorf("not impl")
+
+	fmt.Println("register lnd spend ntfnt")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	spendChan, _, err := m.lnd.ChainNotifier.RegisterSpendNtfn(
+		ctx, outpoint, pkScript, int32(heightHint),
+	)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println("got spend chan")
+
+	return &chainntnfs.SpendEvent{
+		Spend:  spendChan,
+		Cancel: cancel,
+	}, nil
 }
 
 // TODO: etcd

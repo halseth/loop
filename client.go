@@ -5,16 +5,20 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/btcsuite/btcutil"
+	"github.com/coreos/bbolt"
 	"github.com/lightninglabs/loop/lndclient"
 	"github.com/lightninglabs/loop/loopdb"
 	"github.com/lightninglabs/loop/swap"
 	"github.com/lightninglabs/loop/sweep"
 	"github.com/lightningnetwork/lnd/lntypes"
+	sweeper "github.com/lightningnetwork/lnd/sweep"
 )
 
 var (
@@ -69,11 +73,45 @@ type Client struct {
 	clientConfig
 }
 
+// fileExists returns true if the file exists, and false otherwise.
+func fileExists(path string) bool {
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return false
+		}
+	}
+
+	return true
+}
+
 // NewClient returns a new instance to initiate swaps with.
 func NewClient(dbDir string, serverAddress string, insecure bool,
 	lnd *lndclient.LndServices) (*Client, func(), error) {
 
-	store, err := loopdb.NewBoltSwapStore(dbDir, lnd.ChainParams)
+	// If the target path for the swap store doesn't exist, then we'll
+	// create it now before we proceed.
+	if !fileExists(dbDir) {
+		if err := os.MkdirAll(dbDir, 0700); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	// Now that we know that path exists, we'll open up bolt, which
+	// implements our default swap store.
+	path := filepath.Join(dbDir, loopdb.DBFileName)
+	bdb, err := bbolt.Open(path, 0600, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	store, err := loopdb.NewBoltSwapStore(bdb, lnd.ChainParams)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	sweeperStore, err := sweeper.NewSweeperStore(
+		bdb, lnd.ChainParams.GenesisHash,
+	)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -96,6 +134,7 @@ func NewClient(dbDir string, serverAddress string, insecure bool,
 		&sweep.Config{
 			// TODO: make configurable
 			TxConfTarget: 6,
+			SweeperStore: sweeperStore,
 		}, lnd,
 	)
 
