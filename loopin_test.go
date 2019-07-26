@@ -17,9 +17,10 @@ import (
 
 var (
 	testLoopInRequest = LoopInRequest{
-		Amount:         btcutil.Amount(50000),
-		MaxSwapFee:     btcutil.Amount(1000),
-		HtlcConfTarget: 2,
+		Amount:                btcutil.Amount(50000),
+		MaxSwapFee:            btcutil.Amount(1000),
+		HtlcConfTarget:        2,
+		HtlcCutoffTimeSeconds: 1,
 	}
 )
 

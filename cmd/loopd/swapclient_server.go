@@ -323,11 +323,12 @@ func (s *swapClientServer) LoopIn(ctx context.Context,
 	logger.Infof("Loop in request received")
 
 	req := &loop.LoopInRequest{
-		Amount:         btcutil.Amount(in.Amt),
-		MaxMinerFee:    btcutil.Amount(in.MaxMinerFee),
-		MaxSwapFee:     btcutil.Amount(in.MaxSwapFee),
-		HtlcConfTarget: defaultConfTarget,
-		ExternalHtlc:   in.ExternalHtlc,
+		Amount:                btcutil.Amount(in.Amt),
+		MaxMinerFee:           btcutil.Amount(in.MaxMinerFee),
+		MaxSwapFee:            btcutil.Amount(in.MaxSwapFee),
+		HtlcConfTarget:        defaultConfTarget,
+		HtlcCutoffTimeSeconds: defaultCutoffTimeSeconds,
+		ExternalHtlc:          in.ExternalHtlc,
 	}
 	if in.LoopInChannel != 0 {
 		req.LoopInChannel = &in.LoopInChannel

@@ -174,6 +174,8 @@ type LoopInRequest struct {
 	// client htlc tx.
 	HtlcConfTarget int32
 
+	HtlcCutoffTimeSeconds int32
+
 	// LoopInChannel optionally specifies the short channel id of the
 	// channel to charge.
 	LoopInChannel *uint64

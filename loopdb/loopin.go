@@ -23,6 +23,9 @@ type LoopInContract struct {
 	// ExternalHtlc specifies whether the htlc is published by an external
 	// source.
 	ExternalHtlc bool
+
+	// TODO: persist.
+	HtlcCutoffTimeSeconds int32
 }
 
 // LoopIn is a combination of the contract and the updates.

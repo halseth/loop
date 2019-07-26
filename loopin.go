@@ -134,9 +134,10 @@ func newLoopInSwap(globalCtx context.Context, cfg *swapConfig,
 	initiationTime := time.Now()
 
 	contract := loopdb.LoopInContract{
-		HtlcConfTarget: request.HtlcConfTarget,
-		LoopInChannel:  request.LoopInChannel,
-		ExternalHtlc:   request.ExternalHtlc,
+		HtlcConfTarget:        request.HtlcConfTarget,
+		HtlcCutoffTimeSeconds: request.HtlcCutoffTimeSeconds,
+		LoopInChannel:         request.LoopInChannel,
+		ExternalHtlc:          request.ExternalHtlc,
 		SwapContract: loopdb.SwapContract{
 			InitiationHeight: currentHeight,
 			InitiationTime:   initiationTime,

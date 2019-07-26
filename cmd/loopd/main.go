@@ -15,7 +15,8 @@ import (
 )
 
 const (
-	defaultConfTarget = int32(6)
+	defaultConfTarget        = int32(6)
+	defaultCutoffTimeSeconds = 30
 )
 
 var (
