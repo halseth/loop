@@ -35,6 +35,10 @@ loopd
 *.key
 *.hex
 
+# Files from mobile build.
+mobile/build
+mobile/*_generated.go
+
 # vim
 *.swp
 
