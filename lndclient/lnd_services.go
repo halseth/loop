@@ -38,9 +38,27 @@ type GrpcLndServices struct {
 	cleanup func()
 }
 
-// NewLndServices creates a set of required RPC services.
+// NewLndServices creates creates a connection to the given lnd instance and
+// creates a set of required RPC services.
 func NewLndServices(lndAddress, application, network, macaroonDir,
 	tlsPath string) (*GrpcLndServices, error) {
+
+	// Setup connection with lnd
+	log.Infof("Creating lnd connection to %v", lndAddress)
+	conn, err := getClientConn(lndAddress, network, tlsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Infof("Connected to lnd")
+
+	return NewLndServicesFromConn(conn, network, macaroonDir)
+}
+
+// NewLndServices creates a set of required RPC services from the given gRPC
+// connection.
+func NewLndServicesFromConn(conn *grpc.ClientConn, network, macaroonDir string) (
+	*GrpcLndServices, error) {
 
 	// Based on the network, if the macaroon directory isn't set, then
 	// we'll use the expected default locations.
@@ -82,15 +100,6 @@ func NewLndServices(lndAddress, application, network, macaroonDir,
 	if err != nil {
 		return nil, fmt.Errorf("unable to obtain macaroons: %v", err)
 	}
-
-	// Setup connection with lnd
-	log.Infof("Creating lnd connection to %v", lndAddress)
-	conn, err := getClientConn(lndAddress, network, tlsPath)
-	if err != nil {
-		return nil, err
-	}
-
-	log.Infof("Connected to lnd")
 
 	chainParams, err := swap.ChainParamsFromNetwork(network)
 	if err != nil {
