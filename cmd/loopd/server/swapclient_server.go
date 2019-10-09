@@ -1,11 +1,13 @@
-package main
+package server
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 
+	"github.com/lightningnetwork/lnd/lntypes"
 	"github.com/lightningnetwork/lnd/queue"
 
 	"github.com/lightninglabs/loop"
@@ -24,12 +26,68 @@ const (
 	// to specify. This is driven by the minimum confirmation target allowed
 	// by the backing fee estimator.
 	minConfTarget = 2
+
+	defaultConfTarget = int32(6)
+)
+
+var (
+	swaps            = make(map[lntypes.Hash]loop.SwapInfo)
+	subscribers      = make(map[int]chan<- interface{})
+	nextSubscriberID int
+	swapsLock        sync.Mutex
 )
 
 // swapClientServer implements the grpc service exposed by loopd.
 type swapClientServer struct {
 	impl *loop.Client
 	lnd  *lndclient.LndServices
+}
+
+func New(mainCtx context.Context, swapClient *loop.Client,
+	lnd *lndclient.LndServices, statusChan <-chan loop.SwapInfo,
+) (looprpc.SwapClientServer, error) {
+
+	// Retrieve all currently existing swaps from the database.
+	swapsList, err := swapClient.FetchSwaps()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, s := range swapsList {
+		swaps[s.SwapHash] = *s
+	}
+
+	// Start a goroutine that broadcasts swap updates to clients.
+	//	wg.Add(1)
+	go func() {
+		//		defer wg.Done()
+
+		log.Infof("Waiting for updates")
+		for {
+			select {
+			case swap := <-statusChan:
+				swapsLock.Lock()
+				swaps[swap.SwapHash] = swap
+
+				for _, subscriber := range subscribers {
+					select {
+					case subscriber <- swap:
+					case <-mainCtx.Done():
+						return
+					}
+				}
+
+				swapsLock.Unlock()
+			case <-mainCtx.Done():
+				return
+			}
+		}
+	}()
+
+	return &swapClientServer{
+		impl: swapClient,
+		lnd:  lnd,
+	}, nil
 }
 
 // LoopOut initiates an loop out swap with the given parameters. The call

@@ -14,6 +14,7 @@ import (
 
 	proxy "github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/lightninglabs/loop"
+	"github.com/lightninglabs/loop/cmd/loopd/server"
 	"github.com/lightninglabs/loop/looprpc"
 	"google.golang.org/grpc"
 )
@@ -52,25 +53,20 @@ func daemon(config *config) error {
 	}
 	defer cleanup()
 
-	// Retrieve all currently existing swaps from the database.
-	swapsList, err := swapClient.FetchSwaps()
+	statusChan := make(chan loop.SwapInfo)
+	mainCtx, cancel := context.WithCancel(context.Background())
+
+	// Instantiate the loopd gRPC server.
+	server, err := server.New(
+		mainCtx, swapClient, &lnd.LndServices, statusChan,
+	)
 	if err != nil {
 		return err
 	}
 
-	for _, s := range swapsList {
-		swaps[s.SwapHash] = *s
-	}
-
-	// Instantiate the loopd gRPC server.
-	server := swapClientServer{
-		impl: swapClient,
-		lnd:  &lnd.LndServices,
-	}
-
 	serverOpts := []grpc.ServerOption{}
 	grpcServer := grpc.NewServer(serverOpts...)
-	looprpc.RegisterSwapClientServer(grpcServer, &server)
+	looprpc.RegisterSwapClientServer(grpcServer, server)
 
 	// Next, start the gRPC server listening for HTTP/2 connections.
 	log.Infof("Starting gRPC listener")
@@ -105,9 +101,6 @@ func daemon(config *config) error {
 	proxy := &http.Server{Handler: mux}
 	go proxy.Serve(restListener)
 
-	statusChan := make(chan loop.SwapInfo)
-
-	mainCtx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 
 	// Start the swap client itself.
@@ -126,33 +119,6 @@ func daemon(config *config) error {
 		grpcServer.Stop()
 
 		cancel()
-	}()
-
-	// Start a goroutine that broadcasts swap updates to clients.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
-		log.Infof("Waiting for updates")
-		for {
-			select {
-			case swap := <-statusChan:
-				swapsLock.Lock()
-				swaps[swap.SwapHash] = swap
-
-				for _, subscriber := range subscribers {
-					select {
-					case subscriber <- swap:
-					case <-mainCtx.Done():
-						return
-					}
-				}
-
-				swapsLock.Unlock()
-			case <-mainCtx.Done():
-				return
-			}
-		}
 	}()
 
 	// Start the grpc server.
